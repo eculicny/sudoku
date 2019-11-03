@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sync"
+	"time"
 )
 
+// TODO stop using multidimensional array and use single array
 type pair struct {
 	row int
 	col int
@@ -38,7 +41,7 @@ func printGrid(grid [][]int) {
 	}
 }
 
-func validate(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
+func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 	l := len(grid)
 	rt := math.Sqrt(float64(l))
 
@@ -82,13 +85,13 @@ func validate(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 		for i := 1; i <= l; i++ {
 			if rowCounts[ind.row][i] == 0 && colCounts[ind.col][i] == 0 {
 				grid[ind.row][ind.col] = i
-				valid, complete := validate(grid, logger)
+				valid, complete := bruteForce(grid, logger)
 				if complete {
 					fmt.Println("Completed grid achieved. Returning success")
 					return true, true
 				} else if valid {
 					fmt.Println("Grid is valid. Continuing to solve")
-					return validate(grid, logger)
+					return bruteForce(grid, logger)
 				} else {
 					fmt.Println("Invalid grid generated. Resetting index")
 					grid[ind.row][ind.col] = 0
@@ -104,6 +107,86 @@ func validate(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 
 	fmt.Println("Hit final return (should be success)")
 	return true, true
+}
+
+func bruteForceThread(grid [][]int, idx pair, halt chan bool, out chan [][]int, logger *log.Logger, wg *sync.WaitGroup) {
+
+	for i := 1; i <= len(grid[0]); i++ {
+		grid[idx.row][idx.col] = i
+		_, complete := bruteForce(grid, logger)
+		if complete {
+			out <- grid
+			wg.Done()
+			return
+		}
+		// else if (halt has a value) then stop { wg.Done() return }
+	}
+
+	wg.Done()
+	return
+}
+
+func bruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool, complete bool) {
+	l := len(grid)
+	rt := math.Sqrt(float64(l))
+
+	var zeroInd []pair
+	rowCounts := make([][]int, l)
+	colCounts := make([][]int, l)
+	blockCounts := make([][]int, l)
+	for i := 0; i < l; i++ {
+		rowCounts[i] = make([]int, l+1)
+		colCounts[i] = make([]int, l+1)
+		blockCounts[i] = make([]int, l+1)
+	}
+
+	for i := 0; i < l; i++ {
+		for j := 0; j < l; j++ {
+			blockIndex := int(math.Floor(float64(j)/rt)*rt + math.Floor(float64(i)/rt))
+			val := grid[i][j]
+
+			if val != 0 {
+				if rowCounts[i][val] >= 1 {
+					return false, false
+				} else if colCounts[j][val] >= 1 {
+					return false, false
+				} else if blockCounts[blockIndex][val] >= 1 {
+					return false, false
+				}
+			} else {
+				zeroInd = append(zeroInd, pair{i, j})
+			}
+
+			rowCounts[i][val]++
+			colCounts[j][val]++
+			blockCounts[blockIndex][val]++
+		}
+	}
+
+	// TODO this is not going to work since channels are like queues
+	halt := make(chan bool)
+	output := make(chan [][]int)
+	var wg sync.WaitGroup
+
+	// TODO handle case where more threads than zeroes
+	d := int(math.Floor(float64(len(zeroInd)) / float64(tasks)))
+
+	for i := 0; i < len(zeroInd); i = i + d {
+		// make a copy of the grid for the goroutine
+		gridThread := make([][]int, len(grid))
+		for i := range grid {
+			gridThread[i] = make([]int, len(grid[i]))
+			copy(gridThread[i], grid[i])
+		}
+
+		wg.Add(1)
+		go bruteForceThread(gridThread, zeroInd[i], halt, output, logger, &wg)
+	}
+
+	// TODO wait on channels
+	// TODO figure out how to wait until all threads are done or solution is found
+	wg.Wait()
+	return false, true
 }
 
 func main() {
@@ -126,37 +209,10 @@ func main() {
 		{0, 0, 0, 3, 0, 7, 0, 0, 4},
 		{0, 0, 0, 0, 1, 0, 0, 0, 9}}
 
-	fmt.Println(validate(grid, logger))
+	start := time.Now()
+	fmt.Println(bruteForce(grid, logger))
+	t := time.Now().Sub(start)
 	printGrid(grid)
-	//logger.Print("Completed run")
-}
 
-/*
-0,0 1
-0,4 6
-1,0 7
-1,3 5
-1,5 3
-2,0 6
-2,1 9
-2,7 3
-3,0 5
-3,3 2
-3,7 7
-4,0 9
-4,3 1
-4,4 7
-4,5 4
-4,8 5
-5,1 4
-5,5 6
-5,8 3
-6,1 1
-6,7 6
-6,8 2
-7,3 3
-7,5 7
-7,8 4
-8,4 1
-8,8 9
-*/
+	fmt.Printf("Brute force runtime: %v\n", t)
+}
