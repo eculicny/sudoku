@@ -110,19 +110,29 @@ func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 }
 
 func bruteForceThread(grid [][]int, idx pair, halt chan bool, out chan [][]int, logger *log.Logger, wg *sync.WaitGroup) {
-
+	defer wg.Done()
 	for i := 1; i <= len(grid[0]); i++ {
-		grid[idx.row][idx.col] = i
-		_, complete := bruteForce(grid, logger)
-		if complete {
-			out <- grid
-			wg.Done()
-			return
+		select {
+		case _, ok := <-halt:
+			if ok {
+				fmt.Printf("Halting routine %v\n", idx)
+				return
+			} else { // probably not the best way to stop a go routine
+				fmt.Printf("Halting channel already closed for routine %v\n", idx)
+				return
+			}
+		default:
+			{
+				grid[idx.row][idx.col] = i
+				_, complete := bruteForce(grid, logger)
+				if complete {
+					out <- grid
+					return
+				}
+			}
 		}
-		// else if (halt has a value) then stop { wg.Done() return }
 	}
 
-	wg.Done()
 	return
 }
 
@@ -163,30 +173,51 @@ func bruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool
 		}
 	}
 
-	// TODO this is not going to work since channels are like queues
+	// this is not going to work as originally intended since channels are like queues
 	halt := make(chan bool)
 	output := make(chan [][]int)
-	var wg sync.WaitGroup
+	var solverwg sync.WaitGroup
+	//var overseerwg sync.WaitGroup
 
 	// TODO handle case where more threads than zeroes
 	d := int(math.Floor(float64(len(zeroInd)) / float64(tasks)))
 
 	for i := 0; i < len(zeroInd); i = i + d {
-		// make a copy of the grid for the goroutine
+		// TODO move to method make a copy of the grid for the goroutine
 		gridThread := make([][]int, len(grid))
 		for i := range grid {
 			gridThread[i] = make([]int, len(grid[i]))
 			copy(gridThread[i], grid[i])
 		}
 
-		wg.Add(1)
-		go bruteForceThread(gridThread, zeroInd[i], halt, output, logger, &wg)
+		solverwg.Add(1)
+		go bruteForceThread(gridThread, zeroInd[i], halt, output, logger, &solverwg)
 	}
 
-	// TODO wait on channels
-	// TODO figure out how to wait until all threads are done or solution is found
-	wg.Wait()
-	return false, true
+	// central routine to close output channel
+	// overseerwg.Add(1)
+	// go func(output chan [][]int, logger *log.Logger, wg *sync.WaitGroup, mywg *sync.WaitGroup) {
+	// 	fmt.Println("Waiting")
+	// 	wg.Wait()
+	// 	fmt.Println("Waitgroup finished. Closing output channel.")
+	// 	close(output)
+	// 	mywg.Done()
+	// }(output, logger, &solverwg, &overseerwg)
+
+	// wait until a solution is found
+	for soln := range output {
+		halt <- true // probably redundant w/ channel closure
+		close(halt)
+		//overseerwg.Wait()
+
+		solverwg.Wait()
+		close(output) // this seems like bad practice :)
+
+		grid = soln
+		return true, true
+	}
+
+	return false, false
 }
 
 func main() {
@@ -196,7 +227,7 @@ func main() {
 		logger = log.New(&buf, "logger: ", log.Lshortfile)
 	)
 
-	//logger.Print("Beginning...")
+	logger.Print("Beginning...")
 
 	grid := [][]int{
 		{1, 0, 0, 0, 6, 0, 0, 0, 0},
@@ -209,10 +240,30 @@ func main() {
 		{0, 0, 0, 3, 0, 7, 0, 0, 4},
 		{0, 0, 0, 0, 1, 0, 0, 0, 9}}
 
-	start := time.Now()
-	fmt.Println(bruteForce(grid, logger))
-	t := time.Now().Sub(start)
-	printGrid(grid)
+	gridBF := make([][]int, len(grid))
+	for i := range grid {
+		gridBF[i] = make([]int, len(grid[i]))
+		copy(gridBF[i], grid[i])
+	}
 
+	gridBFP := make([][]int, len(grid))
+	for i := range grid {
+		gridBFP[i] = make([]int, len(grid[i]))
+		copy(gridBFP[i], grid[i])
+	}
+
+	var start time.Time
+	var t time.Duration
+
+	// start = time.Now()
+	// fmt.Println(bruteForce(gridBF, logger))
+	// t = time.Now().Sub(start)
+	// printGrid(gridBF)
+	// fmt.Printf("Brute force runtime: %v\n", t)
+
+	start = time.Now()
+	fmt.Println(bruteForceParallel(gridBFP, 5, logger))
+	t = time.Now().Sub(start)
+	printGrid(gridBFP)
 	fmt.Printf("Brute force runtime: %v\n", t)
 }
