@@ -39,6 +39,8 @@ func printGrid(grid [][]int) {
 	for i := 0; i < l+int(rt); i++ {
 		fmt.Print("--")
 	}
+
+	fmt.Println()
 }
 
 func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
@@ -78,8 +80,8 @@ func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 		}
 	}
 
-	fmt.Println(len(zeroInd))
-	fmt.Println(zeroInd)
+	//fmt.Println(len(zeroInd))
+	//fmt.Println(zeroInd)
 	if len(zeroInd) != 0 {
 		ind := zeroInd[0]
 		for i := 1; i <= l; i++ {
@@ -87,25 +89,25 @@ func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 				grid[ind.row][ind.col] = i
 				valid, complete := bruteForce(grid, logger)
 				if complete {
-					fmt.Println("Completed grid achieved. Returning success")
+					//fmt.Println("Completed grid achieved. Returning success")
 					return true, true
 				} else if valid {
-					fmt.Println("Grid is valid. Continuing to solve")
+					//fmt.Println("Grid is valid. Continuing to solve")
 					return bruteForce(grid, logger)
 				} else {
-					fmt.Println("Invalid grid generated. Resetting index")
+					//fmt.Println("Invalid grid generated. Resetting index")
 					grid[ind.row][ind.col] = 0
 				}
 			} else {
-				fmt.Printf("Can't place %v at %v,%v\n", i, ind.row, ind.col)
+				//fmt.Printf("Can't place %v at %v,%v\n", i, ind.row, ind.col)
 			}
 		}
 
-		fmt.Println("No valid grids found. Returning failure")
+		//fmt.Println("No valid grids found. Returning failure")
 		return false, false
 	}
 
-	fmt.Println("Hit final return (should be success)")
+	//fmt.Println("Hit final return (should be success)")
 	return true, true
 }
 
@@ -115,10 +117,10 @@ func bruteForceThread(grid [][]int, idx pair, halt chan bool, out chan [][]int, 
 		select {
 		case _, ok := <-halt:
 			if ok {
-				fmt.Printf("Halting routine %v\n", idx)
+				//fmt.Printf("Halting routine %v\n", idx)
 				return
 			} else { // probably not the best way to stop a go routine
-				fmt.Printf("Halting channel already closed for routine %v\n", idx)
+				//fmt.Printf("Halting channel already closed for routine %v\n", idx)
 				return
 			}
 		default:
@@ -126,7 +128,9 @@ func bruteForceThread(grid [][]int, idx pair, halt chan bool, out chan [][]int, 
 				grid[idx.row][idx.col] = i
 				_, complete := bruteForce(grid, logger)
 				if complete {
+					//fmt.Printf("Solution found in routine %v\n", idx)
 					out <- grid
+					//fmt.Printf("Wrote solution to output channel %v\n", idx)
 					return
 				}
 			}
@@ -174,15 +178,17 @@ func bruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool
 	}
 
 	// this is not going to work as originally intended since channels are like queues
-	halt := make(chan bool)
-	output := make(chan [][]int)
+	halt := make(chan bool, 10)
+	output := make(chan [][]int, 20)
 	var solverwg sync.WaitGroup
 	//var overseerwg sync.WaitGroup
 
 	// TODO handle case where more threads than zeroes
 	d := int(math.Floor(float64(len(zeroInd)) / float64(tasks)))
 
+	fmt.Printf("len: %v, d: %v\n", len(zeroInd), d)
 	for i := 0; i < len(zeroInd); i = i + d {
+		fmt.Printf("Starting thread %v\n", i)
 		// TODO move to method make a copy of the grid for the goroutine
 		gridThread := make([][]int, len(grid))
 		for i := range grid {
@@ -194,30 +200,23 @@ func bruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool
 		go bruteForceThread(gridThread, zeroInd[i], halt, output, logger, &solverwg)
 	}
 
-	// central routine to close output channel
-	// overseerwg.Add(1)
-	// go func(output chan [][]int, logger *log.Logger, wg *sync.WaitGroup, mywg *sync.WaitGroup) {
-	// 	fmt.Println("Waiting")
-	// 	wg.Wait()
-	// 	fmt.Println("Waitgroup finished. Closing output channel.")
-	// 	close(output)
-	// 	mywg.Done()
-	// }(output, logger, &solverwg, &overseerwg)
+	// TODO figure out how to handle the case when no solution exists
 
 	// wait until a solution is found
-	for soln := range output {
-		halt <- true // probably redundant w/ channel closure
-		close(halt)
-		//overseerwg.Wait()
+	soln := <-output
 
-		solverwg.Wait()
-		close(output) // this seems like bad practice :)
+	// probably redundant w/ channel closure
+	halt <- true
+	close(halt)
 
-		grid = soln
-		return true, true
+	solverwg.Wait()
+	close(output)
+
+	for i := range grid {
+		grid[i] = make([]int, len(soln[i]))
+		copy(grid[i], soln[i])
 	}
-
-	return false, false
+	return true, true
 }
 
 func main() {
@@ -253,17 +252,18 @@ func main() {
 	}
 
 	var start time.Time
-	var t time.Duration
-
-	// start = time.Now()
-	// fmt.Println(bruteForce(gridBF, logger))
-	// t = time.Now().Sub(start)
-	// printGrid(gridBF)
-	// fmt.Printf("Brute force runtime: %v\n", t)
 
 	start = time.Now()
-	fmt.Println(bruteForceParallel(gridBFP, 5, logger))
-	t = time.Now().Sub(start)
+	fmt.Println(bruteForce(gridBF, logger))
+	t1 := time.Now().Sub(start)
+
+	start = time.Now()
+	fmt.Println(bruteForceParallel(gridBFP, 10, logger))
+	t2 := time.Now().Sub(start)
+
+	printGrid(gridBF)
 	printGrid(gridBFP)
-	fmt.Printf("Brute force runtime: %v\n", t)
+
+	fmt.Printf("Brute force runtime: %v\n", t1)
+	fmt.Printf("Brute force runtime: %v\n", t2)
 }
