@@ -1,12 +1,10 @@
-package main
+package solver
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"math"
 	"sync"
-	"time"
 )
 
 // TODO stop using multidimensional array and use single array
@@ -43,7 +41,7 @@ func printGrid(grid [][]int) {
 	fmt.Println()
 }
 
-func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
+func BruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 	l := len(grid)
 	rt := math.Sqrt(float64(l))
 
@@ -87,13 +85,13 @@ func bruteForce(grid [][]int, logger *log.Logger) (valid bool, complete bool) {
 		for i := 1; i <= l; i++ {
 			if rowCounts[ind.row][i] == 0 && colCounts[ind.col][i] == 0 {
 				grid[ind.row][ind.col] = i
-				valid, complete := bruteForce(grid, logger)
+				valid, complete := BruteForce(grid, logger)
 				if complete {
 					//fmt.Println("Completed grid achieved. Returning success")
 					return true, true
 				} else if valid {
 					//fmt.Println("Grid is valid. Continuing to solve")
-					return bruteForce(grid, logger)
+					return BruteForce(grid, logger)
 				} else {
 					//fmt.Println("Invalid grid generated. Resetting index")
 					grid[ind.row][ind.col] = 0
@@ -126,7 +124,7 @@ func bruteForceThread(grid [][]int, idx pair, halt chan bool, out chan [][]int, 
 		default:
 			{
 				grid[idx.row][idx.col] = i
-				_, complete := bruteForce(grid, logger)
+				_, complete := BruteForce(grid, logger)
 				if complete {
 					//fmt.Printf("Solution found in routine %v\n", idx)
 					out <- grid
@@ -140,7 +138,7 @@ func bruteForceThread(grid [][]int, idx pair, halt chan bool, out chan [][]int, 
 	return
 }
 
-func bruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool, complete bool) {
+func BruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool, complete bool) {
 	l := len(grid)
 	rt := math.Sqrt(float64(l))
 
@@ -219,51 +217,52 @@ func bruteForceParallel(grid [][]int, tasks int, logger *log.Logger) (valid bool
 	return true, true
 }
 
-func main() {
+// TODO move to test
+// func main() {
 
-	var (
-		buf    bytes.Buffer
-		logger = log.New(&buf, "logger: ", log.Lshortfile)
-	)
+// 	var (
+// 		buf    bytes.Buffer
+// 		logger = log.New(&buf, "logger: ", log.Lshortfile)
+// 	)
 
-	logger.Print("Beginning...")
+// 	logger.Print("Beginning...")
 
-	grid := [][]int{
-		{1, 0, 0, 0, 6, 0, 0, 0, 0},
-		{7, 0, 0, 5, 0, 3, 0, 0, 0},
-		{6, 9, 0, 0, 0, 0, 0, 3, 0},
-		{5, 0, 0, 2, 0, 0, 0, 7, 0},
-		{9, 0, 0, 1, 7, 4, 0, 0, 5},
-		{0, 4, 0, 0, 0, 6, 0, 0, 3},
-		{0, 1, 0, 0, 0, 0, 0, 6, 2},
-		{0, 0, 0, 3, 0, 7, 0, 0, 4},
-		{0, 0, 0, 0, 1, 0, 0, 0, 9}}
+// 	grid := [][]int{
+// 		{1, 0, 0, 0, 6, 0, 0, 0, 0},
+// 		{7, 0, 0, 5, 0, 3, 0, 0, 0},
+// 		{6, 9, 0, 0, 0, 0, 0, 3, 0},
+// 		{5, 0, 0, 2, 0, 0, 0, 7, 0},
+// 		{9, 0, 0, 1, 7, 4, 0, 0, 5},
+// 		{0, 4, 0, 0, 0, 6, 0, 0, 3},
+// 		{0, 1, 0, 0, 0, 0, 0, 6, 2},
+// 		{0, 0, 0, 3, 0, 7, 0, 0, 4},
+// 		{0, 0, 0, 0, 1, 0, 0, 0, 9}}
 
-	gridBF := make([][]int, len(grid))
-	for i := range grid {
-		gridBF[i] = make([]int, len(grid[i]))
-		copy(gridBF[i], grid[i])
-	}
+// 	gridBF := make([][]int, len(grid))
+// 	for i := range grid {
+// 		gridBF[i] = make([]int, len(grid[i]))
+// 		copy(gridBF[i], grid[i])
+// 	}
 
-	gridBFP := make([][]int, len(grid))
-	for i := range grid {
-		gridBFP[i] = make([]int, len(grid[i]))
-		copy(gridBFP[i], grid[i])
-	}
+// 	gridBFP := make([][]int, len(grid))
+// 	for i := range grid {
+// 		gridBFP[i] = make([]int, len(grid[i]))
+// 		copy(gridBFP[i], grid[i])
+// 	}
 
-	var start time.Time
+// 	var start time.Time
 
-	start = time.Now()
-	fmt.Println(bruteForce(gridBF, logger))
-	t1 := time.Now().Sub(start)
+// 	start = time.Now()
+// 	fmt.Println(BruteForce(gridBF, logger))
+// 	t1 := time.Now().Sub(start)
 
-	start = time.Now()
-	fmt.Println(bruteForceParallel(gridBFP, 10, logger))
-	t2 := time.Now().Sub(start)
+// 	start = time.Now()
+// 	fmt.Println(BruteForceParallel(gridBFP, 10, logger))
+// 	t2 := time.Now().Sub(start)
 
-	printGrid(gridBF)
-	printGrid(gridBFP)
+// 	printGrid(gridBF)
+// 	printGrid(gridBFP)
 
-	fmt.Printf("Brute force runtime: %v\n", t1)
-	fmt.Printf("Brute force runtime: %v\n", t2)
-}
+// 	fmt.Printf("Brute force runtime: %v\n", t1)
+// 	fmt.Printf("Brute force runtime: %v\n", t2)
+// }
