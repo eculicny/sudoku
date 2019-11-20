@@ -65,7 +65,6 @@ func main() {
 			}
 		}
 
-		//var content interface{}
 		var content map[string][][]int
 		json.Unmarshal(blob, &content)
 

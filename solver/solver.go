@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"sync"
+	// TODO use context instead of channelsfor threading
 )
 
 // TODO stop using multidimensional array and use single array
